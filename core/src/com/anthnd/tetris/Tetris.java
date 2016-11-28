@@ -5,8 +5,12 @@ import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.graphics.Color;
 import com.badlogic.gdx.graphics.GL20;
 import com.badlogic.gdx.graphics.Texture;
+import com.badlogic.gdx.graphics.g2d.BitmapFont;
 import com.badlogic.gdx.graphics.g2d.Sprite;
 import com.badlogic.gdx.graphics.g2d.SpriteBatch;
+import com.badlogic.gdx.math.Rectangle;
+import com.badlogic.gdx.math.Vector2;
+import com.badlogic.gdx.utils.compression.lzma.Base;
 
 import java.awt.geom.Point2D;
 import java.util.ArrayList;
@@ -14,249 +18,330 @@ import java.util.Random;
 
 public class Tetris extends ApplicationAdapter {
 
-	// TODO: Explore rectangles and collisions for tetrominoes
-	// TODO: Think about better tetromino shift per time implementation
 	// TODO: Integrate input controls
+	// TODO: Refactor
 
+	// Spritebatch for drawing
 	public SpriteBatch batch;
 
 	// Game window height and width
 	public static int height, width;
 
 	// Base square for grid and tetrominoes
-	public Texture texture;
+	public static Texture texture;
 	public Sprite sprite;
+	public BitmapFont font;
 
-	public ArrayList<Tetromino> tetrominoes;
+	// Arrays for tetrominoes in grounded and falling states
+	public ArrayList<BaseSquare> fallingSquares;
+	public ArrayList<BaseSquare> groundedSquares;
 
 	// Grid settings
-	public static final int GRID_SQUARE_SIZE = 33;
+	public static final int GRID_SQUARE_SIZE = 30;
 	public static final int GRID_HEIGHT = 18;
 	public static final int GRID_WIDTH = 10;
-	public static int GRID_X;
-	public static int GRID_Y;
+	public static int GRID_X = 20;
+	public static int GRID_Y = 20;
+
+	// Boolean representation of grounded tetrominoes
+	public boolean[][] grid;
 
 	// Game time
 	public static float time;
+	public float timeCounter;
 
-	public static boolean debug = true;
+	// Constants for tetromino types
+	public final int PIECE_I = 0;
+	public final int PIECE_O = 1;
+	public final int PIECE_T = 2;
+	public final int PIECE_S = 3;
+	public final int PIECE_Z = 4;
+	public final int PIECE_J = 5;
+	public final int PIECE_L = 6;
+	public final int PIECE_RANDOM = 7;
+
 
 
 	@Override
 	public void create () {
+		// Libgdx initializers
 		batch = new SpriteBatch();
+		font = new BitmapFont();
 
 		// Get window dimensions
 		height = Gdx.graphics.getHeight();
 		width = Gdx.graphics.getWidth();
-
-		// Set grid position
-		GRID_X = (width - GRID_WIDTH * GRID_SQUARE_SIZE) / 2;
-		GRID_Y = (height - GRID_HEIGHT * GRID_SQUARE_SIZE) / 2;
-
-		if (debug) {
-			System.out.println("width: " + width);
-			System.out.println("height: " + height);
-			System.out.println("GRID_X: " + GRID_X);
-			System.out.println("GRID_Y: " + GRID_Y);
-		}
 
 		// Generate base square sprite
 		texture = new Texture("square.png");
 		sprite = new Sprite(texture);
 		sprite.setSize(GRID_SQUARE_SIZE, GRID_SQUARE_SIZE);
 
-		tetrominoes = new ArrayList<Tetromino>();
+		// Initialize tetromino arrays
+		fallingSquares = new ArrayList<BaseSquare>();
+		groundedSquares = new ArrayList<BaseSquare>();
 	}
+
 
 	@Override
 	public void render () {
+		// Clear screen and set to black
 		Gdx.gl.glClearColor(0, 0, 0, 1);
 		Gdx.gl.glClear(GL20.GL_COLOR_BUFFER_BIT);
 
-		int oldTime = (int) time;
-		time += Gdx.graphics.getDeltaTime() * 2;
+		// Increment time
+		time += Gdx.graphics.getDeltaTime();
+		timeCounter += Gdx.graphics.getDeltaTime();
 
+		// Begin batch drawing
 		batch.begin();
 
-		drawGrid();
+		// Draw grid background
+		drawGridBG();
 
-		if (allTetrominoesGrounded() || tetrominoes.isEmpty()) {
-			tetrominoes.add(new Tetromino(batch, sprite, Tetromino.PIECE_RANDOM));
-		}
-
-		for (Tetromino t : tetrominoes) {
-			if (!t.grounded && oldTime != (int)time) {
-				if (debug) System.out.println("oldTime: " + oldTime + "\ntime: " + (int)time);
-				t.setY(t.yPos -= GRID_SQUARE_SIZE);
+		// Every half-second
+		if (timeCounter >= 0.4) {
+			// Generate a new tetromino if there are no more falling pieces
+			if (fallingSquares.isEmpty()) {
+				generateTetromino(PIECE_RANDOM);
 			}
-			t.draw();
+
+			// Shift-down all falling squares if they can go down
+			if (canAllGoDown(fallingSquares)) {
+				for (BaseSquare sq : fallingSquares) {
+					sq.shiftDown();
+				}
+			} else { // Otherwise, set them as grounded squares and empty falling squares
+                for (BaseSquare fs : fallingSquares) {
+                	Vector2 gpos = fs.getGridPosition();
+					System.out.println("Add (" + (int)gpos.x + ", " + (int)gpos.y + ") to groundedSquares");
+                	groundedSquares.add(fs);
+				}
+				System.out.println("ArrayList<BaseSquare> groundSquares: ");
+				for (BaseSquare gs : groundedSquares) {
+					System.out.print(gs.getGridPosition() + ", ");
+				}
+				fallingSquares.clear();
+			}
+
+			// Reset half-second counter
+			timeCounter = 0;
 		}
 
+		// Draw falling and grounded squares
+		for (BaseSquare fs : fallingSquares) {
+			fs.draw(batch);
+		}
+		for (BaseSquare gs : groundedSquares) {
+			gs.draw(batch);
+		}
+
+		// Time display rounded to 2 decimal places
+		font.draw(batch, "Time: " + String.format("%.2f", time), 400, 400);
+
+		// End batch drawing
 		batch.end();
 	}
-	
+
+
 	@Override
 	public void dispose () {
 		batch.dispose();
 	}
 
+
 	/**
 	 * Draw a dark grey grid from the base square sprites
 	 */
-	private void drawGrid() {
-		sprite.setColor(Tetromino.rgb(15, 15, 15));
+	private void drawGridBG() {
+		sprite.setColor(rgb(15, 15, 15));
 		for (int x = GRID_X; x < GRID_WIDTH * GRID_SQUARE_SIZE + GRID_X; x += GRID_SQUARE_SIZE) {
 			for (int y = GRID_Y; y < GRID_HEIGHT * GRID_SQUARE_SIZE + GRID_Y; y += GRID_SQUARE_SIZE) {
-				if (debug)
-					//System.out.println("Drawing grid square at (" + x + ", " + y + ")");
+				// System.out.println(x + ", " + y);
 				sprite.setPosition(x, y);
 				sprite.draw(batch);
 			}
 		}
 	}
 
-	private boolean allTetrominoesGrounded() {
-		for (Tetromino t : tetrominoes) {
-			if (!t.grounded)
+
+	/**
+	 * Spawns a specified-tetromino at the top of the board
+	 * @param pieceType a PIECE_TYPE constant spawned
+	 */
+	public void generateTetromino(int pieceType) {
+		if (pieceType == PIECE_RANDOM) {
+			Random rand = new Random();
+			pieceType = rand.nextInt(7);
+		}
+
+		Color c;
+
+		switch (pieceType) {
+			case PIECE_I:
+				// [ ][ ][ ][ ]
+                c = rgb(102, 255, 255);
+                fallingSquares.add(new BaseSquare(c, gridToPixel(3, 18)));
+				fallingSquares.add(new BaseSquare(c, gridToPixel(4, 18)));
+				fallingSquares.add(new BaseSquare(c, gridToPixel(5, 18)));
+				fallingSquares.add(new BaseSquare(c, gridToPixel(6, 18)));
+				break;
+			case PIECE_O:
+				// [ ][ ]
+				// [ ][ ]
+				c = rgb(255, 255, 0);
+				fallingSquares.add(new BaseSquare(c, gridToPixel(4, 18)));
+				fallingSquares.add(new BaseSquare(c, gridToPixel(5, 18)));
+				fallingSquares.add(new BaseSquare(c, gridToPixel(4, 17)));
+				fallingSquares.add(new BaseSquare(c, gridToPixel(5, 17)));
+				break;
+			case PIECE_T:
+				// [ ][ ][ ]
+				//    [ ]
+				c = rgb(204, 0, 204);
+				fallingSquares.add(new BaseSquare(c, gridToPixel(4, 18)));
+				fallingSquares.add(new BaseSquare(c, gridToPixel(5, 18)));
+				fallingSquares.add(new BaseSquare(c, gridToPixel(6, 18)));
+				fallingSquares.add(new BaseSquare(c, gridToPixel(5, 17)));
+				break;
+			case PIECE_S:
+				//    [ ][ ]
+				// [ ][ ]
+				c = rgb(0, 255, 0);
+				fallingSquares.add(new BaseSquare(c, gridToPixel(5, 18)));
+				fallingSquares.add(new BaseSquare(c, gridToPixel(6, 18)));
+				fallingSquares.add(new BaseSquare(c, gridToPixel(4, 17)));
+				fallingSquares.add(new BaseSquare(c, gridToPixel(5, 17)));
+				break;
+			case PIECE_Z:
+				// [ ][ ]
+				//    [ ][ ]
+				c = rgb(255, 0, 0);
+				fallingSquares.add(new BaseSquare(c, gridToPixel(4, 18)));
+				fallingSquares.add(new BaseSquare(c, gridToPixel(5, 18)));
+				fallingSquares.add(new BaseSquare(c, gridToPixel(5, 17)));
+				fallingSquares.add(new BaseSquare(c, gridToPixel(6, 17)));
+				break;
+			case PIECE_J:
+				// [ ][ ][ ]
+				//       [ ]
+				c = rgb(0, 0, 255);
+				fallingSquares.add(new BaseSquare(c, gridToPixel(4, 18)));
+				fallingSquares.add(new BaseSquare(c, gridToPixel(5, 18)));
+				fallingSquares.add(new BaseSquare(c, gridToPixel(6, 18)));
+				fallingSquares.add(new BaseSquare(c, gridToPixel(6, 17)));
+				break;
+			case PIECE_L:
+				// [ ][ ][ ]
+				// [ ]
+				c = rgb(255, 153, 51);
+				fallingSquares.add(new BaseSquare(c, gridToPixel(4, 18)));
+				fallingSquares.add(new BaseSquare(c, gridToPixel(5, 18)));
+				fallingSquares.add(new BaseSquare(c, gridToPixel(6, 18)));
+				fallingSquares.add(new BaseSquare(c, gridToPixel(4, 17)));
+				break;
+			default:
+				break;
+		}
+	}
+
+
+	/**
+	 * Converts from game grid coordinates to pixel coordinates
+	 * @param x x position on grid
+	 * @param y y postiion on grid
+	 * @return a Vector2 with pixel coordinates
+	 */
+	public static Vector2 gridToPixel(int x, int y) {
+		return new Vector2(x * GRID_SQUARE_SIZE + GRID_X, y * GRID_SQUARE_SIZE + GRID_Y);
+	}
+
+
+	/**
+	 * Checks if a BaseSquare has no collisions underneath
+	 * @param squares an ArrayList of squares to be checked
+	 * @return
+	 */
+	public boolean canAllGoDown(ArrayList<BaseSquare> squares) {
+		for (BaseSquare s : squares) {
+			if (s.position.y <= GRID_Y || hasSquareUnder(s, groundedSquares))
 				return false;
 		}
 		return true;
 	}
 
+
+	/**
+	 * Checks if a BaseSquare has another BaseSquare underneath
+	 * @param sq a BaseSquare to be checked
+	 * @param grndsqrs an ArrayList of BaseSquares that can collide
+	 * @return
+	 */
+	public boolean hasSquareUnder(BaseSquare sq, ArrayList<BaseSquare> grndsqrs) {
+		for (BaseSquare grndsq : grndsqrs) {
+			Vector2 oneDown = new Vector2(sq.getGridPosition().x, sq.getGridPosition().y - 1);
+			if (oneDown.epsilonEquals(grndsq.getGridPosition(), 0.01f)) {
+				System.out.println("Has square under " + sq.getGridPosition());
+				return true;
+			}
+		}
+		return false;
+	}
+
+
+	/**
+	 * Converts from 255-scale RGB to percent-scale RGB
+	 * @param r a value for red from 0 to 255
+	 * @param g a value for green from 0 to 255
+	 * @param b a value for blue from 0 to 255
+	 * @return a Color object
+	 */
+	public static Color rgb(float r, float g, float b) {
+		return new Color(r/255, g/255, b/255, 1);
+	}
+
 }
 
 
-class Tetromino {
 
-	public Sprite square;
-	public SpriteBatch batch;
-	public int pieceType;
-	public int xPos;
-	public int yPos;
-	public boolean grounded = false;
+class BaseSquare {
 
-	public static final int PIECE_I = 0;
-	public static final int PIECE_O = 1;
-	public static final int PIECE_T = 2;
-	public static final int PIECE_S = 3;
-	public static final int PIECE_Z = 4;
-	public static final int PIECE_J = 5;
-	public static final int PIECE_L = 6;
-	public static final int PIECE_RANDOM = 7;
+    public Color color;
+    public Vector2 position;
+    public int width;
+    public int height;
 
-	public Tetromino(SpriteBatch batc, Sprite sprite, int type) {
-		square = sprite;
-		batch = batc;
-
-		if (type == PIECE_RANDOM) {
-			Random rand = new Random();
-			type = rand.nextInt(7);
-		}
-		pieceType = type;
-
-		// Set tetromino starting position to top and horizontal-center of grid
-		xPos = Tetris.GRID_X + 4 * Tetris.GRID_SQUARE_SIZE;
-		yPos = Tetris.GRID_Y + (Tetris.GRID_HEIGHT + 2) * Tetris.GRID_SQUARE_SIZE;
-		if (pieceType == 0) { // I-piece
-			xPos = Tetris.GRID_X + 3 * Tetris.GRID_SQUARE_SIZE;
-		}
+	public BaseSquare(Color color, Vector2 pos) {
+		this.color = color;
+		this.position = pos;
 	}
 
-	public void draw() {
-		ArrayList<Point2D> positions = new ArrayList<Point2D>();
-		float size = square.getWidth();
-
-		switch (pieceType) {
-			case PIECE_I:
-				// [ ][ ][ ][ ]
-			    positions.add(new Point2D.Float(xPos, yPos - size));
-			    positions.add(new Point2D.Float(xPos + size, yPos - size));
-			    positions.add(new Point2D.Float(xPos + 2*size, yPos - size));
-			    positions.add(new Point2D.Float(xPos + 3*size, yPos - size));
-			    square.setColor(rgb(102, 255, 255));
-				break;
-			case PIECE_O:
-				// [ ][ ]
-				// [ ][ ]
-				positions.add(new Point2D.Float(xPos, yPos - size));
-				positions.add(new Point2D.Float(xPos + size, yPos - size));
-				positions.add(new Point2D.Float(xPos, yPos - 2*size));
-				positions.add(new Point2D.Float(xPos + size, yPos - 2*size));
-				square.setColor(rgb(255, 255, 0));
-				break;
-			case PIECE_T:
-				// [ ][ ][ ]
-				//    [ ]
-				positions.add(new Point2D.Float(xPos, yPos - size));
-				positions.add(new Point2D.Float(xPos + size, yPos - size));
-				positions.add(new Point2D.Float(xPos + 2*size, yPos - size));
-				positions.add(new Point2D.Float(xPos + size, yPos - 2*size));
-				square.setColor(rgb(204, 0, 204));
-				break;
-			case PIECE_S:
-			    //    [ ][ ]
-				// [ ][ ]
-				positions.add(new Point2D.Float(xPos + size, yPos - size));
-				positions.add(new Point2D.Float(xPos + 2*size, yPos - size));
-				positions.add(new Point2D.Float(xPos, yPos - 2*size));
-				positions.add(new Point2D.Float(xPos + size, yPos - 2*size));
-				square.setColor(rgb(0, 255, 0));
-				break;
-			case PIECE_Z:
-			    // [ ][ ]
-				//    [ ][ ]
-				positions.add(new Point2D.Float(xPos, yPos - size));
-				positions.add(new Point2D.Float(xPos + size, yPos - size));
-				positions.add(new Point2D.Float(xPos + size, yPos - 2*size));
-				positions.add(new Point2D.Float(xPos + 2*size, yPos - 2*size));
-				square.setColor(rgb(255, 0, 0));
-				break;
-			case PIECE_J:
-				// [ ][ ][ ]
-				//       [ ]
-				positions.add(new Point2D.Float(xPos, yPos - size));
-				positions.add(new Point2D.Float(xPos + size, yPos - size));
-				positions.add(new Point2D.Float(xPos + 2*size, yPos - size));
-				positions.add(new Point2D.Float(xPos + 2*size, yPos - 2*size));
-				square.setColor(rgb(0, 0, 255));
-				break;
-			case PIECE_L:
-			    // [ ][ ][ ]
-				// [ ]
-				positions.add(new Point2D.Float(xPos, yPos - size));
-				positions.add(new Point2D.Float(xPos + size, yPos - size));
-				positions.add(new Point2D.Float(xPos + 2*size, yPos - size));
-				positions.add(new Point2D.Float(xPos, yPos - 2*size));
-				square.setColor(rgb(255, 153, 51));
-				break;
-			default:
-				break;
-		}
-
-		for (Point2D pos : positions) {
-			square.setPosition((float)pos.getX(), (float)pos.getY());
-			square.draw(batch);
-		}
+	public BaseSquare(Color color, int gridPosX, int gridPosY) {
+		this.color = color;
+		position = Tetris.gridToPixel(gridPosX, gridPosY);
 	}
 
-	public void setPosition(int x, int y) {
-		setX(x);
-		setY(y);
+	public Rectangle getRectangle() {
+		return new Rectangle(position.x, position.y, width, height);
 	}
 
-	public void setX(int x) {
-		this.xPos = x;
+	public void shiftDown() {
+		position.y -= Tetris.GRID_SQUARE_SIZE;
 	}
 
-	public void setY(int y) {
-		this.yPos = y;
-		if (y <= Tetris.GRID_Y + 2 * Tetris.GRID_SQUARE_SIZE)
-			grounded = true;
+	public void draw(SpriteBatch batch) {
+	    Sprite s = new Sprite(Tetris.texture);
+	    s.setSize(Tetris.GRID_SQUARE_SIZE, Tetris.GRID_SQUARE_SIZE);
+	    s.setPosition(position.x, position.y);
+	    s.setColor(color);
+	    s.draw(batch);
 	}
 
-	public static Color rgb(float r, float g, float b) {
-		return new Color(r/255, g/255, b/255, 1);
+	public Vector2 getGridPosition() {
+		return new Vector2(
+			(position.x - Tetris.GRID_X)/Tetris.GRID_SQUARE_SIZE,
+			(position.y - Tetris.GRID_Y)/Tetris.GRID_SQUARE_SIZE
+		);
 	}
 
 }
