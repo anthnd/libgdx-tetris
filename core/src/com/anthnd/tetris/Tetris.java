@@ -2,6 +2,7 @@ package com.anthnd.tetris;
 
 import com.badlogic.gdx.ApplicationAdapter;
 import com.badlogic.gdx.Gdx;
+import com.badlogic.gdx.Input;
 import com.badlogic.gdx.graphics.Color;
 import com.badlogic.gdx.graphics.GL20;
 import com.badlogic.gdx.graphics.Texture;
@@ -10,15 +11,17 @@ import com.badlogic.gdx.graphics.g2d.Sprite;
 import com.badlogic.gdx.graphics.g2d.SpriteBatch;
 import com.badlogic.gdx.math.Rectangle;
 import com.badlogic.gdx.math.Vector2;
-import com.badlogic.gdx.utils.compression.lzma.Base;
 
-import java.awt.geom.Point2D;
 import java.util.ArrayList;
 import java.util.Random;
 
 public class Tetris extends ApplicationAdapter {
 
 	// TODO: Integrate input controls
+	// TODO: Implement tetromino rotation
+	// TODO: Vertical left and right walls
+	// TODO: Collision
+    // TODO: Row tracking and clearing
 	// TODO: Refactor
 
 	// Spritebatch for drawing
@@ -61,7 +64,6 @@ public class Tetris extends ApplicationAdapter {
 	public final int PIECE_RANDOM = 7;
 
 
-
 	@Override
 	public void create () {
 		// Libgdx initializers
@@ -81,7 +83,6 @@ public class Tetris extends ApplicationAdapter {
 		fallingSquares = new ArrayList<BaseSquare>();
 		groundedSquares = new ArrayList<BaseSquare>();
 	}
-
 
 	@Override
 	public void render () {
@@ -107,9 +108,9 @@ public class Tetris extends ApplicationAdapter {
 			}
 
 			// Shift-down all falling squares if they can go down
-			if (canAllGoDown(fallingSquares)) {
+			if (canAllTranslate(fallingSquares, groundedSquares, 0, -1)) {
 				for (BaseSquare sq : fallingSquares) {
-					sq.shiftDown();
+					sq.translate(0, -GRID_SQUARE_SIZE);
 				}
 			} else { // Otherwise, set them as grounded squares and empty falling squares
                 for (BaseSquare fs : fallingSquares) {
@@ -119,7 +120,7 @@ public class Tetris extends ApplicationAdapter {
 				}
 				System.out.println("ArrayList<BaseSquare> groundSquares: ");
 				for (BaseSquare gs : groundedSquares) {
-					System.out.print(gs.getGridPosition() + ", ");
+					System.out.print(gs.getGridPosition() + " ");
 				}
 				fallingSquares.clear();
 			}
@@ -130,6 +131,14 @@ public class Tetris extends ApplicationAdapter {
 
 		// Draw falling and grounded squares
 		for (BaseSquare fs : fallingSquares) {
+		    if (Gdx.input.isKeyJustPressed(Input.Keys.LEFT)) {
+				if (canAllTranslate(fallingSquares, groundedSquares, 1, 0))
+					fs.translate(-GRID_SQUARE_SIZE, 0);
+			}
+		    if (Gdx.input.isKeyJustPressed(Input.Keys.RIGHT)) {
+		        if (canAllTranslate(fallingSquares, groundedSquares, -1, 0))
+					fs.translate(GRID_SQUARE_SIZE, 0);
+			}
 			fs.draw(batch);
 		}
 		for (BaseSquare gs : groundedSquares) {
@@ -143,12 +152,10 @@ public class Tetris extends ApplicationAdapter {
 		batch.end();
 	}
 
-
 	@Override
 	public void dispose () {
 		batch.dispose();
 	}
-
 
 	/**
 	 * Draw a dark grey grid from the base square sprites
@@ -164,6 +171,9 @@ public class Tetris extends ApplicationAdapter {
 		}
 	}
 
+	public Rectangle getGrid() {
+		return new Rectangle(GRID_X, GRID_Y, GRID_WIDTH * GRID_SQUARE_SIZE, GRID_HEIGHT * GRID_SQUARE_SIZE);
+	}
 
 	/**
 	 * Spawns a specified-tetromino at the top of the board
@@ -181,70 +191,69 @@ public class Tetris extends ApplicationAdapter {
 			case PIECE_I:
 				// [ ][ ][ ][ ]
                 c = rgb(102, 255, 255);
-                fallingSquares.add(new BaseSquare(c, gridToPixel(3, 18)));
-				fallingSquares.add(new BaseSquare(c, gridToPixel(4, 18)));
-				fallingSquares.add(new BaseSquare(c, gridToPixel(5, 18)));
-				fallingSquares.add(new BaseSquare(c, gridToPixel(6, 18)));
+                fallingSquares.add(new BaseSquare(c, gridToPixel(3, 17)));
+				fallingSquares.add(new BaseSquare(c, gridToPixel(4, 17)));
+				fallingSquares.add(new BaseSquare(c, gridToPixel(5, 17)));
+				fallingSquares.add(new BaseSquare(c, gridToPixel(6, 17)));
 				break;
 			case PIECE_O:
 				// [ ][ ]
 				// [ ][ ]
 				c = rgb(255, 255, 0);
-				fallingSquares.add(new BaseSquare(c, gridToPixel(4, 18)));
-				fallingSquares.add(new BaseSquare(c, gridToPixel(5, 18)));
 				fallingSquares.add(new BaseSquare(c, gridToPixel(4, 17)));
 				fallingSquares.add(new BaseSquare(c, gridToPixel(5, 17)));
+				fallingSquares.add(new BaseSquare(c, gridToPixel(4, 16)));
+				fallingSquares.add(new BaseSquare(c, gridToPixel(5, 16)));
 				break;
 			case PIECE_T:
 				// [ ][ ][ ]
 				//    [ ]
 				c = rgb(204, 0, 204);
-				fallingSquares.add(new BaseSquare(c, gridToPixel(4, 18)));
-				fallingSquares.add(new BaseSquare(c, gridToPixel(5, 18)));
-				fallingSquares.add(new BaseSquare(c, gridToPixel(6, 18)));
+				fallingSquares.add(new BaseSquare(c, gridToPixel(4, 17)));
 				fallingSquares.add(new BaseSquare(c, gridToPixel(5, 17)));
+				fallingSquares.add(new BaseSquare(c, gridToPixel(6, 17)));
+				fallingSquares.add(new BaseSquare(c, gridToPixel(5, 16)));
 				break;
 			case PIECE_S:
 				//    [ ][ ]
 				// [ ][ ]
 				c = rgb(0, 255, 0);
-				fallingSquares.add(new BaseSquare(c, gridToPixel(5, 18)));
-				fallingSquares.add(new BaseSquare(c, gridToPixel(6, 18)));
-				fallingSquares.add(new BaseSquare(c, gridToPixel(4, 17)));
 				fallingSquares.add(new BaseSquare(c, gridToPixel(5, 17)));
+				fallingSquares.add(new BaseSquare(c, gridToPixel(6, 17)));
+				fallingSquares.add(new BaseSquare(c, gridToPixel(4, 16)));
+				fallingSquares.add(new BaseSquare(c, gridToPixel(5, 16)));
 				break;
 			case PIECE_Z:
 				// [ ][ ]
 				//    [ ][ ]
 				c = rgb(255, 0, 0);
-				fallingSquares.add(new BaseSquare(c, gridToPixel(4, 18)));
-				fallingSquares.add(new BaseSquare(c, gridToPixel(5, 18)));
+				fallingSquares.add(new BaseSquare(c, gridToPixel(4, 17)));
 				fallingSquares.add(new BaseSquare(c, gridToPixel(5, 17)));
-				fallingSquares.add(new BaseSquare(c, gridToPixel(6, 17)));
+				fallingSquares.add(new BaseSquare(c, gridToPixel(5, 16)));
+				fallingSquares.add(new BaseSquare(c, gridToPixel(6, 16)));
 				break;
 			case PIECE_J:
 				// [ ][ ][ ]
 				//       [ ]
 				c = rgb(0, 0, 255);
-				fallingSquares.add(new BaseSquare(c, gridToPixel(4, 18)));
-				fallingSquares.add(new BaseSquare(c, gridToPixel(5, 18)));
-				fallingSquares.add(new BaseSquare(c, gridToPixel(6, 18)));
+				fallingSquares.add(new BaseSquare(c, gridToPixel(4, 17)));
+				fallingSquares.add(new BaseSquare(c, gridToPixel(5, 17)));
 				fallingSquares.add(new BaseSquare(c, gridToPixel(6, 17)));
+				fallingSquares.add(new BaseSquare(c, gridToPixel(6, 16)));
 				break;
 			case PIECE_L:
 				// [ ][ ][ ]
 				// [ ]
 				c = rgb(255, 153, 51);
-				fallingSquares.add(new BaseSquare(c, gridToPixel(4, 18)));
-				fallingSquares.add(new BaseSquare(c, gridToPixel(5, 18)));
-				fallingSquares.add(new BaseSquare(c, gridToPixel(6, 18)));
 				fallingSquares.add(new BaseSquare(c, gridToPixel(4, 17)));
+				fallingSquares.add(new BaseSquare(c, gridToPixel(5, 17)));
+				fallingSquares.add(new BaseSquare(c, gridToPixel(6, 17)));
+				fallingSquares.add(new BaseSquare(c, gridToPixel(4, 16)));
 				break;
 			default:
 				break;
 		}
 	}
-
 
 	/**
 	 * Converts from game grid coordinates to pixel coordinates
@@ -256,6 +265,44 @@ public class Tetris extends ApplicationAdapter {
 		return new Vector2(x * GRID_SQUARE_SIZE + GRID_X, y * GRID_SQUARE_SIZE + GRID_Y);
 	}
 
+	/**
+	 * Checks if a BaseSquare has no collisions underneath
+	 * @param squares an ArrayList of squares to be checked
+	 * @return
+	 */
+	public boolean canAllGoLeft(ArrayList<BaseSquare> squares) {
+		for (BaseSquare s : squares) {
+			if (s.position.x <= GRID_X || hasSquareUnder(s, groundedSquares))
+				return false;
+		}
+		return true;
+	}
+
+	public boolean callAllGoRight(ArrayList<BaseSquare> movingSquares, ArrayList<BaseSquare> staticSquares) {
+		for (BaseSquare msq : movingSquares) {
+		    Vector2 oneRight = new Vector2(msq.getGridPosition().x + 1, msq.getGridPosition().y);
+			for (BaseSquare ssq : staticSquares) {
+				if (msq.position.y >= GRID_X + 10*GRID_SQUARE_SIZE || oneRight.epsilonEquals(ssq.getGridPosition(), 0.01f)) {
+					System.out.println("Has square to right " + msq.getGridPosition());
+					return true;
+				}
+			}
+		}
+		return false;
+	}
+
+	public boolean canAllTranslate(ArrayList<BaseSquare> movingSquares, ArrayList<BaseSquare> staticSquares, int xGridTranslate, int yGridTranslate) {
+		for (BaseSquare movsq : movingSquares) {
+			Vector2 oneShift = new Vector2(movsq.getGridPosition().x + xGridTranslate, movsq.getGridPosition().y + yGridTranslate);
+			for (BaseSquare stcsq : staticSquares) {
+			    if (getGrid().contains(oneShift) || oneShift.epsilonEquals(stcsq.getGridPosition(), 0.01f)) {
+					System.out.println("Collision detected");
+					return true;
+				}
+			}
+		}
+		return false;
+	}
 
 	/**
 	 * Checks if a BaseSquare has no collisions underneath
@@ -269,7 +316,6 @@ public class Tetris extends ApplicationAdapter {
 		}
 		return true;
 	}
-
 
 	/**
 	 * Checks if a BaseSquare has another BaseSquare underneath
@@ -287,7 +333,6 @@ public class Tetris extends ApplicationAdapter {
 		}
 		return false;
 	}
-
 
 	/**
 	 * Converts from 255-scale RGB to percent-scale RGB
@@ -311,24 +356,41 @@ class BaseSquare {
     public int width;
     public int height;
 
+	/**
+	 * BaseSquare constructor taking a color and position in Vector2 form
+	 * @param color a Color for the square
+	 * @param pos initial position of square
+	 */
 	public BaseSquare(Color color, Vector2 pos) {
 		this.color = color;
 		this.position = pos;
 	}
 
+	/**
+	 * BaseSquare constructor taking a color and two ints for the grid position
+	 * @param color a Color for the square
+	 * @param gridPosX x position on grid
+	 * @param gridPosY y position on grid
+	 */
 	public BaseSquare(Color color, int gridPosX, int gridPosY) {
 		this.color = color;
 		position = Tetris.gridToPixel(gridPosX, gridPosY);
 	}
 
-	public Rectangle getRectangle() {
-		return new Rectangle(position.x, position.y, width, height);
+	/**
+	 * Translate the base square
+	 * @param xShift x shift rightwards
+	 * @param yShift y shift upwards
+	 */
+	public void translate(int xShift, int yShift) {
+		position.x += xShift;
+		position.y += yShift;
 	}
 
-	public void shiftDown() {
-		position.y -= Tetris.GRID_SQUARE_SIZE;
-	}
-
+	/**
+	 * Draws the square with size = GRID_SQUARE_SIZE
+	 * @param batch a SpriteBatch instance
+	 */
 	public void draw(SpriteBatch batch) {
 	    Sprite s = new Sprite(Tetris.texture);
 	    s.setSize(Tetris.GRID_SQUARE_SIZE, Tetris.GRID_SQUARE_SIZE);
@@ -337,11 +399,23 @@ class BaseSquare {
 	    s.draw(batch);
 	}
 
+	/**
+	 * Returns the square's position in the grid. (0, 0) is the bottom-left corner
+	 * @return a Vector2 object representing the grid position
+	 */
 	public Vector2 getGridPosition() {
 		return new Vector2(
 			(position.x - Tetris.GRID_X)/Tetris.GRID_SQUARE_SIZE,
 			(position.y - Tetris.GRID_Y)/Tetris.GRID_SQUARE_SIZE
 		);
+	}
+
+	/**
+	 * Returns a Rectangle at the square's position
+	 * @return a Rectangle object
+	 */
+	public Rectangle getRectangle() {
+		return new Rectangle(position.x, position.y, width, height);
 	}
 
 }
